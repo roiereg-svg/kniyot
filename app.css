@@ -203,6 +203,9 @@ h1, h2 { margin: 0; font-family: var(--display); font-weight: 400; line-height: 
 .group-btn .gt b { font-family: var(--display); font-weight: 400; font-size: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-btn .gt span { font-size: 15px; color: var(--ink2); font-weight: 500; }
 .gicon { flex: none; width: var(--s, 48px); height: var(--s, 48px); border-radius: 10px; background: var(--c, #1737D8); color: #FFFFFF; display: flex; align-items: center; justify-content: center; }
+.group-row { display: flex; gap: 8px; align-items: stretch; }
+.group-row .group-btn { flex: 1; min-width: 0; }
+.group-edit { flex: none; width: 56px; padding: 0; border: 2px solid var(--rule); border-radius: 8px; background: var(--bg); display: flex; align-items: center; justify-content: center; }
 .add-group { border-style: dashed; border-color: var(--ink); justify-content: center; font-weight: 800; font-size: 18px; }
 
 /* ---------- full screens ---------- */

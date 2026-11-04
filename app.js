@@ -851,8 +851,10 @@ function groupsSheet() {
       const n = (g.memberIds || []).length;
       parts.push(n === 1 ? "חבר אחד" : `${n} חברים`);
       if (g.ownerId === me()) parts.push("מנהל");
-      return `<button class="group-btn" data-act="openGroup" data-gid="${esc(g.id)}" aria-pressed="${g.id === gid}">${gicon(g)}
-        <span class="gt"><b>${esc(g.name)}</b><span>${parts.join(" · ")}</span></span>${g.id === gid ? `<span aria-label="הרשימה הנוכחית">${svg(P.check, 24, 3)}</span>` : ""}</button>`;
+      const owner = g.ownerId === me();
+      return `<div class="group-row"><button class="group-btn" data-act="openGroup" data-gid="${esc(g.id)}" aria-pressed="${g.id === gid}">${gicon(g)}
+        <span class="gt"><b>${esc(g.name)}</b><span>${parts.join(" · ")}</span></span>${g.id === gid ? `<span aria-label="הרשימה הנוכחית">${svg(P.check, 24, 3)}</span>` : ""}</button>
+        <button class="group-edit" data-act="editGroup" data-gid="${esc(g.id)}" aria-label="${owner ? `הגדרות ומחיקה של ${esc(g.name)}` : `יציאה מ${esc(g.name)}`}">${svg(owner ? P.pencil : P.people, 22)}</button></div>`;
     }).join("")}
     <button class="group-btn add-group" data-act="toNewGroup">${svg(P.plus, 22, 2.6)}קבוצה חדשה</button></div>`);
 }
@@ -935,6 +937,14 @@ const ACT = {
   toSettings: () => { const g = groups[gid]; show("settings", { name: g.name, color: g.color, icon: g.icon }); },
   toNewGroup: () => show("newGroup", { first: false, name: "", color: GROUP_COLORS[0][0], icon: "people" }),
   openGroup: el => openGroup(el.dataset.gid),
+  // From "הקבוצות שלי": the owner goes straight to the group settings (rename, delete);
+  // a member goes to the people screen, where leaving is.
+  editGroup(el) {
+    const g = el.dataset.gid;
+    if (!groups[g]) return;
+    openGroup(g);
+    if (groups[g].ownerId === me()) ACT.toSettings(); else ACT.toPeople();
+  },
   groups: () => groupsSheet(),
   closeLayer: () => closeLayer(),
   focusInput: () => $("newItem")?.focus(),
