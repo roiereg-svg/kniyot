@@ -16,6 +16,23 @@ service cloud.firestore {
     function isOwner(gid) { return signedIn() && get(groupPath(gid)).data.ownerId == me(); }
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
     function str(v, max) { return v is string && v.size() >= 1 && v.size() <= max; }
+    // The app's manager: the only account that reads feedback. A Firebase user id, not personal data.
+    function isAdmin() { return signedIn() && me() == 'aq3oJMYq9URIy7UDLpVAWSUhazt1'; }
+
+    // ---------- feedback from users ----------
+    // Anyone signed in may send feedback in his own name. Only the manager may read, mark or delete it.
+    match /feedback/{id} {
+      allow create: if signedIn()
+        && request.resource.data.uid == me()
+        && request.resource.data.type in ['bug', 'idea', 'other']
+        && str(request.resource.data.text, 2000)
+        && str(request.resource.data.name, 40)
+        && request.resource.data.seen == false
+        && request.resource.data.done == false
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'type', 'text', 'device', 'standalone', 'version', 'createdAt', 'seen', 'done']);
+      allow read, delete: if isAdmin();
+      allow update: if isAdmin() && changed().hasOnly(['seen', 'done']);
+    }
 
     // ---------- private profile and the list of my groups ----------
     match /users/{uid} {

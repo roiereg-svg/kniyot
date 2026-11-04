@@ -12,6 +12,9 @@ const FIREBASE = {
 const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
 const PROD_HOST = "kniyot.roieregev.com";
 const INVITE_DAYS = 7;
+// The app's manager reads user feedback. A Firebase user id (not personal data); the rules check the same id.
+const ADMIN_UID = "aq3oJMYq9URIy7UDLpVAWSUhazt1";
+const APP_VERSION = "2026-11-04";
 
 // ---------- categories, in the order you walk a supermarket ----------
 const CATS = [
@@ -146,6 +149,8 @@ const P = {
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   phone: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>',
+  chat: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
+  inbox: '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/>',
 };
 const GROUP_COLORS = [["#1737D8", "כחול"], ["#C93A00", "כתום כהה"], ["#8A1FB0", "סגול"], ["#00766B", "טורקיז כהה"], ["#8A5A00", "חרדל כהה"]];
 const GROUP_ICONS = [["people", "משפחה"], ["home", "בית"], ["heart", "לב"], ["star", "כוכב"], ["cart", "עגלה"], ["sun", "שמש"]];
@@ -236,6 +241,8 @@ async function signIn() {
     // Emulator only: sign in as a fake Google user chosen by ?as=name, without the Google window.
     const who = new URLSearchParams(location.search).get("as") || sessionStorage.getItem("as") || "a";
     sessionStorage.setItem("as", who);
+    // ?as=admin signs in as the manager's id (the test creates that emulator account first).
+    if (who === "admin") { await F.auth.signInWithEmailAndPassword(F.au, "admin@example.com", "emulator-only"); return; }
     const shownName = new URLSearchParams(location.search).get("name") || "בודק " + who;
     const token = JSON.stringify({ sub: "test-" + who, email: `${who}@example.com`, email_verified: true, name: shownName });
     await F.auth.signInWithCredential(F.au, F.auth.GoogleAuthProvider.credential(token));
@@ -256,13 +263,37 @@ function stopAll() {
   Object.values(groupSubs).forEach(u => u()); groupSubs = {};
   curSubs.forEach(u => u()); curSubs = [];
   profileSub?.(); profileSub = null;
+  fbSub?.(); fbSub = null; feedback = [];
   groups = {}; gid = null; items = []; members = {}; learned = {}; profile = null;
 }
+
+// ---------- feedback ----------
+let feedback = [], fbSub = null, fbType = "bug";
+const isAdmin = () => me() === ADMIN_UID;
+const unseenFeedback = () => feedback.filter(f => !f.seen).length;
+function watchFeedback() {
+  const q = F.fs.query(col("feedback"), F.fs.orderBy("createdAt", "desc"), F.fs.limit(200));
+  fbSub = F.fs.onSnapshot(q, s => {
+    feedback = s.docs.map(x => ({ id: x.id, ...x.data() }));
+    if (view === "main") refreshMain();
+    if (view === "profile" && !vd.first) { vd.name = $("pname")?.value ?? vd.name; render(); }
+    if (view === "feedback") render();
+  }, e => console.error(e));
+}
+// "Android · Chrome", "iPhone · Safari": enough to reproduce a bug, without storing the full browser string.
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const os = /Android/.test(ua) ? "Android" : /iPhone/.test(ua) ? "iPhone" : isIOS() ? "iPad" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "אחר";
+  const br = /SamsungBrowser/.test(ua) ? "Samsung" : /CriOS|Chrome/.test(ua) ? "Chrome" : /FxiOS|Firefox/.test(ua) ? "Firefox" : /Safari/.test(ua) ? "Safari" : "אחר";
+  return `${os} · ${br}`;
+}
+const FB_TYPES = [["bug", "באג"], ["idea", "רעיון"], ["other", "אחר"]];
 
 function onUser(u) {
   stopAll();
   user = u;
   if (!u) { pendingInvite ? showInviteLanding() : show("login"); return; }
+  if (isAdmin()) watchFeedback();
   let first = true;
   profileSub = F.fs.onSnapshot(d("users", u.uid), async snap => {
     if (!snap.exists()) {
@@ -519,6 +550,8 @@ const SCREENS = {
       <p class="muted" style="font-size:15px">החשבון מחובר ל-Google${user?.email ? ` · <span dir="ltr">${esc(user.email)}</span>` : ""}</p>`}
     <div class="stack" style="margin-top:auto;gap:10px">
       <button class="btn primary" data-act="saveProfile">${f ? "המשך" : "שמירה"}</button>
+      ${f ? "" : `<button class="btn outline" data-act="openFeedback">${svg(P.chat, 22)}שליחת משוב</button>`}
+      ${!f && isAdmin() ? `<button class="btn outline" data-act="toFeedback">${svg(P.inbox, 22)}משובים שהתקבלו${unseenFeedback() ? `<span class="count-pill new">${unseenFeedback()}</span>` : ""}</button>` : ""}
       ${f ? "" : `<button class="btn danger" data-act="signOut">יציאה מהחשבון</button>`}
     </div></div>`;
   },
@@ -594,6 +627,28 @@ const SCREENS = {
   </div>`;
   },
 
+  // Manager only. Open items first, newest on top; handled ones at the bottom, greyed.
+  feedback: () => {
+    if (!isAdmin()) return SCREENS.loading();
+    const open = feedback.filter(f => !f.done), done = feedback.filter(f => f.done);
+    const card = f => {
+      const t = FB_TYPES.find(x => x[0] === f.type) || FB_TYPES[2];
+      const when = f.createdAt?.toDate ? f.createdAt.toDate().toLocaleString("he-IL", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+      return `<div class="fb-card${f.done ? " done" : ""}">
+        <div class="fb-top"><span class="fb-tag ${esc(t[0])}">${t[1]}</span><span class="muted">${esc(f.name)} · <bdi dir="ltr">${esc(when)}</bdi></span></div>
+        <p class="fb-text">${esc(f.text)}</p>
+        <div class="fb-meta">טלפון ודפדפן: <bdi dir="ltr">${esc(f.device || "")}</bdi>${f.standalone ? " · מהאייקון במסך הבית" : ""}${f.version ? ` · גרסה <bdi dir="ltr">${esc(f.version)}</bdi>` : ""}</div>
+        <button class="btn outline small" data-act="fbDone" data-id="${esc(f.id)}" style="align-self:flex-start">${f.done ? "החזרה לפתוחים" : `${svg(P.check, 18, 3)}סימון כטופל`}</button>
+      </div>`;
+    };
+    return `<div class="pad screen">
+      ${backRow("משובים שהתקבלו", `${open.length} פתוחים · ${done.length} טופלו`, "toProfile")}
+      ${feedback.length ? "" : `<p class="muted" style="font-size:17px">עוד לא התקבלו משובים.</p>`}
+      ${open.map(card).join("")}
+      ${done.length ? `<span class="label" style="margin-top:8px">טופלו</span>${done.map(card).join("")}` : ""}
+    </div>`;
+  },
+
   settings: () => `<div class="pad screen">
     <div class="back-row">
       <button class="icon-btn" data-act="toPeople" aria-label="חזרה">${svg(P.back, 24, 2.6)}</button>
@@ -655,7 +710,7 @@ function refreshMain() {
     <div class="top-row">
       <button class="switcher" data-act="groups" aria-label="מעבר בין קבוצות: ${esc(g?.name || "")}"><span>${esc(g?.name || "…")}</span>${svg(P.chevron, 26, 2.6)}</button>
       <button class="people-btn" data-act="toPeople">${svg(P.people, 18, 2.4)}אנשים</button>
-      <button class="me-btn" data-act="toProfile" aria-label="הפרופיל שלי">${avatar(meCard, "s48")}</button>
+      <button class="me-btn" data-act="toProfile" aria-label="הפרופיל שלי${isAdmin() && unseenFeedback() ? (unseenFeedback() === 1 ? ", משוב חדש אחד" : `, ${unseenFeedback()} משובים חדשים`) : ""}">${avatar(meCard, "s48")}${isAdmin() && unseenFeedback() ? '<span class="dot" aria-hidden="true"></span>' : ""}</button>
     </div>
     <div>
       <div class="progress-row"><b>${total ? (open.length ? `נשארו ${open.length} מתוך ${total}` : "הכול בעגלה") : "אין מוצרים ברשימה"}</b>${done.length ? `<span>${done.length} בעגלה</span>` : ""}</div>
@@ -937,6 +992,46 @@ const ACT = {
   toSettings: () => { const g = groups[gid]; show("settings", { name: g.name, color: g.color, icon: g.icon }); },
   toNewGroup: () => show("newGroup", { first: false, name: "", color: GROUP_COLORS[0][0], icon: "people" }),
   openGroup: el => openGroup(el.dataset.gid),
+
+  openFeedback() {
+    fbType = "bug";
+    sheet("שליחת משוב", `
+      <p class="muted" style="font-size:16px">מה עבד לא טוב, מה חסר, או רעיון לשיפור. המשוב מגיע ישירות למנהל האפליקציה.</p>
+      <div class="chips" role="radiogroup" aria-label="סוג המשוב">${FB_TYPES.map(([v, l]) => `<button class="chip" role="radio" data-act="pickFbType" data-v="${v}" aria-checked="${v === fbType}">${l}</button>`).join("")}</div>
+      <label class="label" for="fbText">מה רציתם לספר?</label>
+      <textarea id="fbText" class="field area" maxlength="2000" rows="5" placeholder="למשל: ההקלטה נעצרת לפני שסיימתי לדבר"></textarea>
+      <p class="muted" style="font-size:14px">יחד עם המשוב נשמרים השם שלכם וסוג הטלפון והדפדפן, כדי שיהיה קל לבדוק.</p>
+      <button class="btn primary" data-act="sendFeedback">שליחה</button>`);
+  },
+  pickFbType(el) { fbType = el.dataset.v; document.querySelectorAll('[data-act="pickFbType"]').forEach(b => b.setAttribute("aria-checked", String(b === el))); },
+  async sendFeedback(el) {
+    const text = String($("fbText").value || "").trim().slice(0, 2000);
+    if (!text) { toast("כתבו כמה מילים לפני השליחה.", true); $("fbText").focus(); return; }
+    el.disabled = true;
+    try {
+      await F.fs.addDoc(col("feedback"), {
+        uid: me(), name: (profile?.name || user?.displayName || "?").slice(0, 40), type: fbType, text,
+        device: deviceLabel(), standalone: standalone(), version: APP_VERSION,
+        createdAt: F.fs.serverTimestamp(), seen: false, done: false,
+      });
+      closeLayer();
+      toast("תודה, המשוב נשלח");
+    } catch (e) { console.error(e); toast("השליחה לא הצליחה. בדקו חיבור ונסו שוב.", true); el.disabled = false; }
+  },
+  async toFeedback() {
+    show("feedback");
+    // Opening the screen counts as reading: everything here stops being "new".
+    const unseen = feedback.filter(f => !f.seen);
+    if (!unseen.length) return;
+    const b = F.fs.writeBatch(F.db);
+    unseen.forEach(f => b.update(d("feedback", f.id), { seen: true }));
+    try { await b.commit(); } catch (e) { console.error(e); }
+  },
+  async fbDone(el) {
+    const f = feedback.find(x => x.id === el.dataset.id);
+    if (!f) return;
+    try { await F.fs.updateDoc(d("feedback", f.id), { done: !f.done, seen: true }); } catch { toast("העדכון לא הצליח.", true); }
+  },
   // From "הקבוצות שלי": the owner goes straight to the group settings (rename, delete);
   // a member goes to the people screen, where leaving is.
   editGroup(el) {

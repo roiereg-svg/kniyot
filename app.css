@@ -75,7 +75,21 @@ h1, h2 { margin: 0; font-family: var(--display); font-weight: 400; line-height: 
 .switcher { flex: 1; min-width: 0; min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 0; background: none; border: 0; text-align: start; }
 .switcher span { font-family: var(--display); font-size: clamp(20px, 5.8vw, 30px); line-height: 1.1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .people-btn { flex: none; min-height: 44px; padding: 0 clamp(8px, 2.5vw, 14px); display: flex; align-items: center; gap: 6px; background: transparent; border: 2px solid var(--ink); border-radius: 8px; font-size: 16px; font-weight: 700; }
-.me-btn { flex: none; padding: 0; border: 0; background: none; border-radius: 50%; }
+.me-btn { position: relative; flex: none; padding: 0; border: 0; background: none; border-radius: 50%; }
+.me-btn .dot { position: absolute; top: -2px; inset-inline-start: -2px; width: 16px; height: 16px; border-radius: 8px; background: var(--yellow); border: 2.5px solid var(--bg); }
+.count-pill.new { background: var(--yellow); color: #0C1424; }
+
+/* feedback */
+.field.area { height: auto; min-height: 120px; padding: 12px 14px; font-family: var(--body); font-size: 18px; line-height: 1.45; resize: vertical; }
+.fb-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 12px; background: var(--surface); border: 2px solid var(--ink); border-radius: 8px; }
+.fb-card.done { border-color: var(--rule); opacity: .7; }
+.fb-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; }
+.fb-tag { padding: 3px 10px; border-radius: 6px; font-size: 14px; font-weight: 800; }
+.fb-tag.bug { background: var(--danger); color: var(--bg); }
+.fb-tag.idea { background: var(--tint); color: var(--primary); }
+.fb-tag.other { background: var(--rule); color: var(--ink); }
+.fb-text { font-size: 18px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fb-meta { font-size: 14px; color: var(--ink2); }
 .progress-row { display: flex; align-items: baseline; justify-content: space-between; }
 .progress-row b { font-size: 17px; }
 .progress-row span { font-size: 15px; color: var(--ink2); font-weight: 500; }
