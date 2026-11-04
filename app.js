@@ -75,6 +75,8 @@ function splitQty(chunk) {
   if (words.length > 1 && isNum(words[0])) {
     qty = NUMS[words[0]] || words[0]; words.shift();
     if (words.length > 1 && UNITS.includes(words[0])) qty += " " + words.shift();
+  } else if (words.length > 1 && ["קילו", "ק\"ג", "קג", "ליטר"].includes(words[0])) {
+    qty = "1 " + words.shift();   // "קילו עגבניות" is one kilo of tomatoes
   }
   return { name: words.join(" "), qty };
 }
@@ -174,7 +176,7 @@ const ls = {
 const daysLeft = ts => Math.max(0, Math.ceil((ts.toMillis() - Date.now()) / 864e5));
 const validFor = ts => { const d = daysLeft(ts); return d > 1 ? `תקף עוד ${d} ימים` : "תקף עד מחר"; };
 const inviteUrl = code => location.hostname === PROD_HOST ? `https://${PROD_HOST}/j/${code}` : `${location.origin}${location.pathname}?j=${code}`;
-const prettyUrl = code => inviteUrl(code).replace(/^https?:\/\//, "");
+const prettyUrl = code => F?.emu ? `${PROD_HOST}/j/${code}` : inviteUrl(code).replace(/^https?:\/\//, "");
 function newCode() {
   const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   const r = crypto.getRandomValues(new Uint8Array(12));
@@ -234,7 +236,8 @@ async function signIn() {
     // Emulator only: sign in as a fake Google user chosen by ?as=name, without the Google window.
     const who = new URLSearchParams(location.search).get("as") || sessionStorage.getItem("as") || "a";
     sessionStorage.setItem("as", who);
-    const token = JSON.stringify({ sub: "test-" + who, email: `${who}@example.com`, email_verified: true, name: "בודק " + who });
+    const shownName = new URLSearchParams(location.search).get("name") || "בודק " + who;
+    const token = JSON.stringify({ sub: "test-" + who, email: `${who}@example.com`, email_verified: true, name: shownName });
     await F.auth.signInWithCredential(F.au, F.auth.GoogleAuthProvider.credential(token));
     return;
   }
@@ -385,7 +388,8 @@ async function joinWithInvite(code) {
     b.set(d("groups", inv.groupId, "members", me()), { ...myCard(), joinedAt: F.fs.serverTimestamp() });
     b.set(d("users", me()), { groups: F.fs.arrayUnion(inv.groupId) }, { merge: true });
     await b.commit();
-    try { await F.fs.getDocFromServer(d("groups", inv.groupId)); } catch {}   // the server has the join before the list opens
+    // Let the server confirm the join before the list opens, but never wait more than a few seconds.
+    try { await Promise.race([F.fs.getDocFromServer(d("groups", inv.groupId)), new Promise(r => setTimeout(r, 4000))]); } catch {}
     toast(`הצטרפתם לקבוצה "${inv.groupName}"`);
     return inv.groupId;
   } catch (e) {
@@ -421,7 +425,10 @@ async function copyText(t) {
 }
 
 // ---------- screens ----------
-function show(v, data = {}) { view = v; vd = data; closeLayer(); render(); window.scrollTo(0, 0); }
+function show(v, data = {}) {
+  if (F?.emu) console.log("[show]", v, new Error().stack.split("\n").slice(2, 5).map(s => s.trim()).join(" < "));
+  view = v; vd = data; closeLayer(); render(); window.scrollTo(0, 0);
+}
 function render() {
   const app = $("app");
   if (view === "main") { renderMain(); return; }
@@ -457,7 +464,7 @@ const SCREENS = {
         ${gicon({ color: "#1737D8", icon: "people" }, 72)}
         <h1 class="grow" style="font-size:40px">${esc(inv.groupName)}</h1>
       </div>
-      <span class="muted" style="font-size:17px;font-weight:500">${esc(inv.inviterName)} הזמין אתכם</span>
+      <span class="muted" style="font-size:17px;font-weight:500">הזמנה מאת ${esc(inv.inviterName)}</span>
     </div>
     <div class="stack" style="gap:14px">
       <h2 style="font-size:26px">מה קורה עכשיו</h2>
@@ -765,7 +772,9 @@ function startMic() {
   recText = ""; recCancelled = false;
   try {
     rec = new SR();
-    rec.lang = "he-IL"; rec.interimResults = true; rec.continuous = true; rec.maxAlternatives = 1;
+    // One phrase per recording, as in the original app. On Android, continuous mode resends every
+    // earlier piece inside each new result ("ביצים ביצים ביצים…"), so it is not used.
+    rec.lang = "he-IL"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
   } catch { panel = "unavailable"; updatePreview(); return; }
   const started = Date.now();
   openLayer(`<div class="scrim"></div><section class="rec" aria-label="הקלטה פעילה">
@@ -779,8 +788,14 @@ function startMic() {
     </div></section>`, "rec");
   recTimer = setInterval(() => { const s = Math.floor((Date.now() - started) / 1000); const t = $("recTime"); if (t) t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }, 500);
   rec.onresult = ev => {
+    // A result that repeats what came before it (Android does this) replaces it instead of being added.
     let txt = "";
-    for (const r of ev.results) txt += r[0].transcript;
+    for (const r of ev.results) {
+      const t = r[0].transcript.trim();
+      if (!t) continue;
+      if (!txt || t.startsWith(txt)) txt = t;
+      else if (!txt.endsWith(t)) txt += " " + t;
+    }
     recText = txt;
     const p = $("recText"); if (p) p.innerHTML = `${esc(txt)}<span class="caret"></span>`;
   };
@@ -843,9 +858,9 @@ function editSheet(it) {
     <div class="stack"><label class="label" for="ename">שם המוצר</label><input id="ename" class="field" type="text" maxlength="100" value="${esc(it.name)}"></div>
     <div class="stack"><label class="label" for="eqty">כמות ויחידה</label>
       <div class="qty-row">
-        <button class="step" data-act="qtyStep" data-v="-1" aria-label="הפחתת יחידה">${svg(P.minus, 24, 2.6)}</button>
-        <input id="eqty" class="field" type="text" inputmode="decimal" value="${esc(q.n)}">
         <button class="step" data-act="qtyStep" data-v="1" aria-label="הוספת יחידה">${svg(P.plus, 24, 2.6)}</button>
+        <input id="eqty" class="field" type="text" inputmode="decimal" value="${esc(q.n)}">
+        <button class="step" data-act="qtyStep" data-v="-1" aria-label="הפחתת יחידה">${svg(P.minus, 24, 2.6)}</button>
       </div>
       <div class="chips" role="radiogroup" aria-label="יחידה">${units.map(u => `<button class="chip" role="radio" data-act="pickUnit" data-v="${esc(u)}" aria-checked="${u === q.unit}">${esc(u)}</button>`).join("")}</div>
     </div>

@@ -34,7 +34,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--primary); o
 .display { font-family: var(--display); font-weight: 400; }
 svg { flex: none; }
 
-.screen { max-width: 560px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
+.screen { width: 100%; max-width: 560px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
 .pad { padding: 28px 16px calc(28px + env(safe-area-inset-bottom, 0px)); gap: 24px; }
 .grow { flex: 1; min-width: 0; }
 .muted { color: var(--ink2); }
@@ -214,7 +214,7 @@ h1, h2 { margin: 0; font-family: var(--display); font-weight: 400; line-height: 
 .hero h1, .hero-col h1 { font-size: 36px; line-height: 1.05; overflow-wrap: anywhere; }
 .box { display: flex; flex-direction: column; gap: 12px; padding: 16px 14px 18px; background: var(--surface); border: 3px solid var(--ink); border-radius: 8px; }
 .link-box { display: flex; align-items: center; justify-content: center; min-height: 64px; padding: 0 14px; background: var(--surface); border: 2px solid var(--ink); border-radius: 8px; }
-.link-box span { direction: ltr; font-size: 18px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-box span { min-width: 0; max-width: 100%; direction: ltr; font-size: clamp(14px, 4.4vw, 18px); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .steps { display: flex; flex-direction: column; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .steps li { display: flex; align-items: center; gap: 12px; font-size: 19px; font-weight: 700; }
 .steps li .num { flex: none; width: 36px; height: 36px; border-radius: 18px; background: var(--ink); color: var(--bg); font-family: var(--display); font-size: 18px; display: flex; align-items: center; justify-content: center; }
