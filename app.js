@@ -787,7 +787,15 @@ function startMic() {
       <button class="rec-cancel" data-act="recCancel">ביטול</button>
     </div></section>`, "rec");
   recTimer = setInterval(() => { const s = Math.floor((Date.now() - started) / 1000); const t = $("recTime"); if (t) t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }, 500);
+  // Android does not always end the recording when the speaker stops, so the app decides:
+  // 1.5 seconds without new words after speech, 8 seconds of nothing at the start, 30 seconds at most.
+  const stopNow = () => { try { rec?.stop(); } catch {} };
+  let silence = setTimeout(stopNow, 8000);
+  const cap = setTimeout(stopNow, 30000);
   rec.onresult = ev => {
+    clearTimeout(silence);
+    const final = ev.results[ev.results.length - 1]?.isFinal;
+    silence = setTimeout(stopNow, final ? 700 : 1500);
     // A result that repeats what came before it (Android does this) replaces it instead of being added.
     let txt = "";
     for (const r of ev.results) {
@@ -806,7 +814,7 @@ function startMic() {
     else if (ev.error === "no-speech") toast("לא שמעתי כלום. נסו שוב, קרוב יותר לטלפון.");
   };
   rec.onend = () => {
-    clearInterval(recTimer); rec = null;
+    clearInterval(recTimer); clearTimeout(silence); clearTimeout(cap); rec = null;
     closeLayer();
     if (!recCancelled && recText.trim()) $("newItem").value = recBase + recText.trim();
     updatePreview();
