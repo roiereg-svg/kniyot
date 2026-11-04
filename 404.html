@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>הקניות שלנו</title>
+<script>
+  // GitHub Pages serves this page for any unknown path. Invite links look like /j/CODE: pass the code to the app.
+  var m = location.pathname.match(/\/j\/([A-Za-z0-9-]+)/);
+  location.replace("/" + (m ? "?j=" + encodeURIComponent(m[1]) : ""));
+</script>
+</head>
+<body style="font-family:system-ui,sans-serif;background:#F2F4F8;color:#0C1424;padding:24px">
+<p>מעבירים אתכם לרשימת הקניות… <a href="/">לחצו כאן אם זה לא קורה</a>.</p>
+</body>
+</html>
