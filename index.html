@@ -17,6 +17,16 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&family=Secular+One&display=swap">
 <link rel="stylesheet" href="app.css">
+<script>
+/* Display choice before first paint: kniyot.theme = light | dark, absent = follow the device. */
+(function () {
+  var t = null; try { t = localStorage.getItem("kniyot.theme"); } catch (e) {}
+  if (t !== "light" && t !== "dark") return;
+  document.documentElement.setAttribute("data-theme", t);
+  var c = t === "dark" ? "#090E1C" : "#F2F4F8";
+  document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) { m.setAttribute("content", c); });
+})();
+</script>
 </head>
 <body>
 <div id="app"><div class="screen"><div class="loading">רגע…</div></div></div>

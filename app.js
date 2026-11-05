@@ -178,6 +178,15 @@ const ls = {
   get(k) { try { return localStorage.getItem("kniyot." + k); } catch { return null; } },
   set(k, v) { try { v == null ? localStorage.removeItem("kniyot." + k) : localStorage.setItem("kniyot." + k, v); } catch {} },
 };
+// Display: "system" follows the device; "light"/"dark" are pinned by the user (index.html applies it before paint).
+const THEMES = [["system", "לפי המכשיר"], ["light", "בהירה"], ["dark", "כהה"]];
+const getTheme = () => { const t = ls.get("theme"); return t === "light" || t === "dark" ? t : "system"; };
+function applyTheme(t) {
+  const root = document.documentElement;
+  if (t === "system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", t);
+  const metas = document.querySelectorAll('meta[name="theme-color"]');
+  metas.forEach(m => m.setAttribute("content", t === "dark" ? "#090E1C" : t === "light" ? "#F2F4F8" : (m.media.includes("dark") ? "#090E1C" : "#F2F4F8")));
+}
 const daysLeft = ts => Math.max(0, Math.ceil((ts.toMillis() - Date.now()) / 864e5));
 const validFor = ts => { const d = daysLeft(ts); return d > 1 ? `תקף עוד ${d} ימים` : "תקף עד מחר"; };
 const inviteUrl = code => location.hostname === PROD_HOST ? `https://${PROD_HOST}/j/${code}` : `${location.origin}${location.pathname}?j=${code}`;
@@ -546,6 +555,10 @@ const SCREENS = {
       <input id="pname" class="field" type="text" maxlength="40" value="${esc(vd.name)}" autocomplete="given-name" autofocus>
       <p class="muted" style="font-size:15px">השם והתמונה מופיעים ליד כל מוצר שתוסיפו.</p>
     </div>
+    ${f ? "" : `<div class="stack">
+      <span class="label" id="themeLbl">תצוגה</span>
+      <div class="chips" role="radiogroup" aria-labelledby="themeLbl">${THEMES.map(([v, l]) => `<button class="chip" role="radio" data-act="pickTheme" data-v="${v}" aria-checked="${v === getTheme()}">${l}</button>`).join("")}</div>
+    </div>`}
     ${f ? "" : `<button class="btn outline small" data-act="install" style="align-self:flex-start">${svg(P.phone, 20)}הוספה למסך הבית</button>
       <p class="muted" style="font-size:15px">החשבון מחובר ל-Google${user?.email ? ` · <span dir="ltr">${esc(user.email)}</span>` : ""}</p>`}
     <div class="stack" style="margin-top:auto;gap:10px">
@@ -1002,6 +1015,11 @@ const ACT = {
       <textarea id="fbText" class="field area" maxlength="2000" rows="5" placeholder="למשל: ההקלטה נעצרת לפני שסיימתי לדבר"></textarea>
       <p class="muted" style="font-size:14px">יחד עם המשוב נשמרים השם שלכם וסוג הטלפון והדפדפן, כדי שיהיה קל לבדוק.</p>
       <button class="btn primary" data-act="sendFeedback">שליחה</button>`);
+  },
+  pickTheme(el) {
+    const t = el.dataset.v;
+    ls.set("theme", t === "system" ? null : t); applyTheme(t);
+    document.querySelectorAll('[data-act="pickTheme"]').forEach(b => b.setAttribute("aria-checked", String(b === el)));
   },
   pickFbType(el) { fbType = el.dataset.v; document.querySelectorAll('[data-act="pickFbType"]').forEach(b => b.setAttribute("aria-checked", String(b === el))); },
   async sendFeedback(el) {
