@@ -15,7 +15,7 @@ const PROD_HOST = "kniyot.roieregev.com";
 const INVITE_DAYS = 7;
 // The app's manager reads user feedback. A Firebase user id (not personal data); the rules check the same id.
 const ADMIN_UID = "aq3oJMYq9URIy7UDLpVAWSUhazt1";
-const APP_VERSION = "2026-11-06";
+const APP_VERSION = "2026-11-06b";
 
 // ---------- categories, in the order you walk a supermarket ----------
 const CATS = [
@@ -301,9 +301,11 @@ function deviceLabel() {
 }
 const FB_TYPES = [["bug", "באג"], ["idea", "רעיון"], ["other", "אחר"]];
 
+let accountDeleted = false;
 function onUser(u) {
   stopAll();
   user = u;
+  if (accountDeleted) { show("deleted"); return; }
   if (!u) { pendingInvite ? showInviteLanding() : show("login"); return; }
   if (isAdmin()) watchFeedback();
   let first = true;
@@ -312,7 +314,7 @@ function onUser(u) {
       // Offline with nothing saved on this phone yet: "no profile" here only means "not known yet".
       // Treating it as a new user would ask for a name and save an empty group list over the real one.
       if (snap.metadata.fromCache) {
-        if (first) show("error", { msg: "אין חיבור לאינטרנט, ובטלפון הזה עוד לא שמורה הרשימה. היא תיפתח לבד כשתחזור הקליטה." });
+        if (first) show("error", { title: "אין חיבור לאינטרנט", msg: "בטלפון הזה עוד לא שמורה הרשימה. היא תיפתח לבד כשתחזור הקליטה." });
         return;
       }
       profile = null;
@@ -494,7 +496,8 @@ const backRow = (title, sub = "", act = "toMain") => `<div class="back-row">
 
 const SCREENS = {
   loading: () => `<div class="loading">רגע…</div>`,
-  error: () => `<div class="pad screen"><h1>משהו השתבש</h1><p class="muted">${esc(vd.msg)}</p><button class="btn primary" data-act="reload">רענון</button></div>`,
+  deleted: () => `<div class="pad screen"><h1>החשבון נמחק</h1><p class="muted" style="font-size:18px">החשבון והפרופיל שלכם נמחקו. תודה שהשתמשתם בהקניות שלנו.</p><button class="btn outline" data-act="reload">חזרה למסך הכניסה</button></div>`,
+  error: () => `<div class="pad screen"><h1>${esc(vd.title || "משהו השתבש")}</h1><p class="muted">${esc(vd.msg)}</p><button class="btn primary" data-act="reload">רענון</button></div>`,
 
   login: () => `
     <div class="strips" aria-hidden="true">${["produce","bakery","dairy","meat","drinks","baby"].map(c => `<div style="--c:${CAT[c].c}">${CAT[c].label}</div>`).join("")}</div>
@@ -576,6 +579,7 @@ const SCREENS = {
       ${f ? "" : `<button class="btn outline" data-act="openFeedback">${svg(P.chat, 22)}שליחת משוב</button>`}
       ${!f && isAdmin() ? `<button class="btn outline" data-act="toFeedback">${svg(P.inbox, 22)}משובים שהתקבלו${unseenFeedback() ? `<span class="count-pill new">${unseenFeedback()}</span>` : ""}</button>` : ""}
       ${f ? "" : `<button class="btn danger" data-act="signOut">יציאה מהחשבון</button>`}
+      ${f ? "" : `<button class="link-btn center danger-link" data-act="deleteAccount">מחיקת החשבון</button>`}
     </div></div>`;
   },
 
@@ -761,7 +765,8 @@ function refreshMain() {
 }
 
 function itemRow(i) {
-  const who = members[i.addedBy] || (i.addedBy ? { uid: i.addedBy, name: i.addedByName || "?" } : null);
+  // An item whose author deleted his account keeps no name, so it shows no avatar.
+  const who = members[i.addedBy] || (i.addedBy && i.addedByName ? { uid: i.addedBy, name: i.addedByName } : null);
   const q = i.qty ? `<span class="qty">× ${esc(i.qty)}</span>` : "";
   if (i.done) return `<div class="row done" data-id="${esc(i.id)}">
     <button class="check" data-act="toggle" aria-label="החזרה לרשימה: ${esc(i.name)}">${svg(P.check, 24, 3)}</button>
@@ -1032,6 +1037,70 @@ $("photoFile").addEventListener("change", async () => {
   catch { toast("לא הצלחתי לקרוא את התמונה. נסו תמונה אחרת.", true); }
 });
 
+// ---------- deleting the account ----------
+async function accountPlan() {
+  const plan = [];
+  for (const g of profile?.groups || []) {
+    const gs = await F.fs.getDoc(d("groups", g));
+    if (!gs.exists()) continue;
+    const gd = gs.data(), others = (gd.memberIds || []).filter(u => u !== me());
+    if (gd.ownerId !== me()) { plan.push({ gid: g, name: gd.name, kind: "leave" }); continue; }
+    if (!others.length) { plan.push({ gid: g, name: gd.name, kind: "delete" }); continue; }
+    const ms = (await F.fs.getDocs(col("groups", g, "members"))).docs.map(x => ({ uid: x.id, ...x.data() }))
+      .filter(m => others.includes(m.uid)).sort((a, b) => (a.joinedAt?.toMillis?.() || 0) - (b.joinedAt?.toMillis?.() || 0));
+    const to = ms[0] || { uid: others[0], name: "חבר אחר" };
+    plan.push({ gid: g, name: gd.name, kind: "transfer", to: to.uid, toName: to.name || "חבר אחר" });
+  }
+  return plan;
+}
+// Google asks for a recent sign-in before an account can be deleted: ask for it first, while the tap still counts.
+async function freshSignIn() {
+  if (F.emu) return;
+  const last = Date.parse(user.metadata?.lastSignInTime || 0);
+  if (Date.now() - last < 4 * 60e3) return;
+  await F.auth.reauthenticateWithPopup(user, new F.auth.GoogleAuthProvider());
+}
+async function deleteAccountNow(plan) {
+  try { await freshSignIn(); }
+  catch (e) { if (!/popup-closed-by-user|cancelled-popup-request/.test(e?.code || "")) toast("צריך להיכנס שוב עם Google כדי למחוק את החשבון. נסו שוב.", true); return; }
+  stopAll();
+  show("loading");
+  try {
+    // Handovers first: if any is refused, nothing has been changed yet.
+    const order = { transfer: 0, leave: 1, delete: 2 };
+    for (const x of [...plan].sort((a, b) => order[a.kind] - order[b.kind])) {
+      if (x.kind === "delete") {
+        const refs = [];
+        for (const sub of ["items", "members", "meta"]) (await F.fs.getDocs(col("groups", x.gid, sub))).docs.forEach(r => refs.push(r.ref));
+        for (let n = 0; n < refs.length; n += 400) { const b = F.fs.writeBatch(F.db); refs.slice(n, n + 400).forEach(r => b.delete(r)); await b.commit(); }
+        await F.fs.deleteDoc(d("groups", x.gid));
+      } else {
+        // My name comes off the items I added in the same batch that takes me out of the group,
+        // so either both happen or neither does.
+        const mine = (await F.fs.getDocs(F.fs.query(col("groups", x.gid, "items"), F.fs.where("addedBy", "==", me())))).docs;
+        for (; mine.length > 450; ) { const b = F.fs.writeBatch(F.db); mine.splice(0, 450).forEach(r => b.update(r.ref, { addedByName: "" })); await b.commit(); }
+        const b = F.fs.writeBatch(F.db);
+        mine.forEach(r => b.update(r.ref, { addedByName: "" }));
+        b.update(d("groups", x.gid), x.kind === "transfer" ? { ownerId: x.to, memberIds: F.fs.arrayRemove(me()) } : { memberIds: F.fs.arrayRemove(me()) });
+        b.delete(d("groups", x.gid, "members", me()));
+        await b.commit();
+      }
+    }
+    const inv = (await F.fs.getDocs(F.fs.query(col("invites"), F.fs.where("createdBy", "==", me())))).docs;
+    for (let n = 0; n < inv.length; n += 400) { const b = F.fs.writeBatch(F.db); inv.slice(n, n + 400).forEach(r => b.delete(r.ref)); await b.commit(); }
+    await F.fs.deleteDoc(d("users", me()));
+    accountDeleted = true;
+    await user.delete();
+  } catch (e) {
+    console.error(e);
+    accountDeleted = false;
+    show("error", { msg: "מחיקת החשבון לא הושלמה. חלק מהנתונים אולי כבר נמחקו. בדקו חיבור, רעננו ונסו שוב מהפרופיל." });
+    return;
+  }
+  try { Object.keys(localStorage).filter(k => k.startsWith("kniyot.")).forEach(k => localStorage.removeItem(k)); sessionStorage.clear(); } catch {}
+  show("deleted");
+}
+
 // ---------- actions ----------
 const ACT = {
   reload: () => location.reload(),
@@ -1191,6 +1260,26 @@ const ACT = {
         pickStart();
       } catch (e) { console.error(e); toast("היציאה לא הצליחה. נסו שוב.", true); openGroup(g0); }
     });
+  },
+  // Deleting the account, as chosen by the app's owner:
+  // a group I own with others passes to its longest-standing member, a group I own alone is deleted,
+  // a group I am only a member of I leave. Items I added stay on those lists without my name.
+  // My invites, profile and sign-in account are deleted. Feedback I sent stays with the app's manager.
+  async deleteAccount(el) {
+    el.disabled = true;
+    let plan;
+    try { plan = await accountPlan(); }
+    catch (e) { console.error(e); toast("לא הצלחתי לבדוק את הקבוצות שלכם. בדקו חיבור ונסו שוב.", true); el.disabled = false; return; }
+    el.disabled = false;
+    const lines = ["השם, התמונה והחשבון שלכם יימחקו, ואי אפשר לשחזר."];
+    for (const x of plan) {
+      if (x.kind === "delete") lines.push(`• הקבוצה "${x.name}" תימחק עם הרשימה שלה.`);
+      if (x.kind === "transfer") lines.push(`• הניהול של "${x.name}" יעבור ל${x.toName}, והרשימה תישאר לחברים.`);
+      if (x.kind === "leave") lines.push(`• תצאו מהקבוצה "${x.name}".`);
+    }
+    if (plan.some(x => x.kind !== "delete")) lines.push("מוצרים שהוספתם יישארו ברשימות, בלי השם שלכם.");
+    lines.push("משובים ששלחתם, אם שלחתם, יישארו אצל מנהל האפליקציה.");
+    confirmDialog("למחוק את החשבון?", lines.join("\n"), "מחיקת החשבון לצמיתות", () => deleteAccountNow(plan));
   },
   removeMember(el) {
     const u = el.dataset.uid, m = members[u];

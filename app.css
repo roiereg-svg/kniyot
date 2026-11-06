@@ -273,6 +273,10 @@ h1, h2 { margin: 0; font-family: var(--display); font-weight: 400; line-height: 
 
 .loading { flex: 1; display: flex; align-items: center; justify-content: center; font-family: var(--display); font-size: 24px; color: var(--ink2); }
 
+/* account deletion */
+.danger-link { color: var(--danger); }
+.dialog p { white-space: pre-line; }
+
 /* install banner, above the composer on the list screen */
 .install-banner { position: fixed; z-index: 7; inset-inline: 12px; max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px;
   padding: 14px; background: var(--surface); color: var(--ink); border: 2px solid var(--ink); border-radius: 8px; box-shadow: 0 8px 24px rgba(12, 20, 36, .18); }

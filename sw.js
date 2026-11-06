@@ -1,6 +1,6 @@
 // Network first for the app files, so updates arrive at once; the cache is only a fallback offline.
 // The list data itself is cached by Firestore, not here.
-const CACHE = "kniyot-v3";
+const CACHE = "kniyot-v4";
 const SHELL = ["./", "index.html", "app.css", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png"];
 // The Firebase libraries come from gstatic. Without them the app cannot open at all, so they are kept
 // here too: a phone opened with no reception (inside the supermarket) still reaches the saved list.

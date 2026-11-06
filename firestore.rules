@@ -60,6 +60,15 @@ service cloud.firestore {
         && resource.data.memberIds.hasAll(request.resource.data.memberIds)
         && me() in request.resource.data.memberIds;
 
+      // The owner may hand the group to a member and leave it at the same time (when deleting his account).
+      allow update: if isOwner(gid)
+        && changed().hasOnly(['ownerId', 'memberIds'])
+        && request.resource.data.ownerId != me()
+        && request.resource.data.ownerId in resource.data.memberIds
+        && resource.data.memberIds.hasAll(request.resource.data.memberIds)
+        && request.resource.data.memberIds.size() == resource.data.memberIds.size() - 1
+        && !(me() in request.resource.data.memberIds);
+
       // A member who is not the owner may leave: only his own id disappears.
       allow update: if isMember(gid)
         && resource.data.ownerId != me()
