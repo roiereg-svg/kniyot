@@ -9,7 +9,8 @@ const FIREBASE = {
   messagingSenderId: "285619415090",
   appId: "1:285619415090:web:d38dc3f1f9f5e5a428f42b",
 };
-const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";
+const SDK = "https://www.gstatic.com/firebasejs/10.12.2/";   // keep in step with SDK in sw.js
+const NAME_MAX = 100;   // same limit as items in firestore.rules
 const PROD_HOST = "kniyot.roieregev.com";
 const INVITE_DAYS = 7;
 // The app's manager reads user feedback. A Firebase user id (not personal data); the rules check the same id.
@@ -108,7 +109,9 @@ function parse(text) {
     }
     if (cur.length) segments.push(cur.join(" "));
   }
-  return segments.map(splitQty).filter(x => x.name).map(x => ({ ...x, cat: guessCat(x.name) }));
+  // The server accepts names of up to 100 characters: cut longer ones here, so the item is saved and the preview shows it.
+  return segments.map(splitQty).filter(x => x.name).map(x => ({ ...x, name: x.name.length > NAME_MAX ? x.name.slice(0, NAME_MAX).trim() : x.name }))
+    .map(x => ({ ...x, cat: guessCat(x.name) }));
 }
 
 // Quantity is stored as text, "2" or "2 קילו". The edit sheet splits it into a number and a unit.
@@ -306,6 +309,12 @@ function onUser(u) {
   let first = true;
   profileSub = F.fs.onSnapshot(d("users", u.uid), async snap => {
     if (!snap.exists()) {
+      // Offline with nothing saved on this phone yet: "no profile" here only means "not known yet".
+      // Treating it as a new user would ask for a name and save an empty group list over the real one.
+      if (snap.metadata.fromCache) {
+        if (first) show("error", { msg: "אין חיבור לאינטרנט, ובטלפון הזה עוד לא שמורה הרשימה. היא תיפתח לבד כשתחזור הקליטה." });
+        return;
+      }
       profile = null;
       if (first) { first = false; show("profile", { first: true, name: u.displayName || "", photo: u.photoURL || "", photoSource: u.photoURL ? "google" : "none" }); }
       return;
@@ -534,7 +543,7 @@ const SCREENS = {
       </ol>
     </div>
     <div class="stack" style="margin-top:auto;gap:10px">
-      <button class="btn primary" data-act="askNewLink">${svg(P.share, 24, 2.3)}שליחת הודעה: ״אפשר קישור חדש?״</button>
+      <button class="btn primary" data-act="askNewLink">${svg(P.share, 24, 2.3)}בקשת קישור חדש</button>
       <button class="btn outline" data-act="copyAsk">העתקת ההודעה</button>
       <button class="link-btn center" data-act="leaveInvalid">${user ? "המשך לאפליקציה" : "כניסה לאפליקציה"}</button>
     </div></div>`; },
