@@ -1,6 +1,6 @@
 // Network first for the app files, so updates arrive at once; the cache is only a fallback offline.
 // The list data itself is cached by Firestore, not here.
-const CACHE = "kniyot-v1";
+const CACHE = "kniyot-v2";
 const SHELL = ["./", "index.html", "app.css", "app.js", "manifest.webmanifest", "icon.svg", "icon-192.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => {

@@ -14,7 +14,7 @@ const PROD_HOST = "kniyot.roieregev.com";
 const INVITE_DAYS = 7;
 // The app's manager reads user feedback. A Firebase user id (not personal data); the rules check the same id.
 const ADMIN_UID = "aq3oJMYq9URIy7UDLpVAWSUhazt1";
-const APP_VERSION = "2026-11-04";
+const APP_VERSION = "2026-11-06";
 
 // ---------- categories, in the order you walk a supermarket ----------
 const CATS = [
@@ -468,6 +468,7 @@ async function copyText(t) {
 function show(v, data = {}) {
   if (F?.emu) console.log("[show]", v, new Error().stack.split("\n").slice(2, 5).map(s => s.trim()).join(" < "));
   view = v; vd = data; closeLayer(); render(); window.scrollTo(0, 0);
+  if (v !== "main") hideInstallBanner();
 }
 function render() {
   const app = $("app");
@@ -706,10 +707,12 @@ function renderMain() {
       </form>
     </div></div>`;
     $("newItem").addEventListener("input", () => { panel = null; updatePreview(); });
+    $("newItem").addEventListener("focus", hideInstallBanner);
     $("addForm").addEventListener("submit", e => { e.preventDefault(); submitItems(); });
   }
   refreshMain();
   updatePreview();
+  offerInstall();
 }
 
 function refreshMain() {
@@ -966,7 +969,37 @@ function installSheet(tab) {
     <button class="btn outline" data-act="closeLayer">הבנתי</button>`);
 }
 let installPrompt = null;
-window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installPrompt = e; });
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installPrompt = e; offerInstall(); });
+window.addEventListener("appinstalled", () => { installPrompt = null; hideInstallBanner(); });
+
+// A one-time banner on the list screen: on Android it opens the browser's install window,
+// on iPhone (no install API there) it shows the two manual steps. "Not now" hides it for two weeks.
+const INSTALL_LATER_DAYS = 14;
+let installOffered = false;
+function offerInstall() {
+  if (installOffered || view !== "main" || standalone()) return;
+  if (Date.now() < (+ls.get("installLater") || 0)) return;
+  if (!installPrompt && !isIOS()) return;
+  installOffered = true;
+  setTimeout(showInstallBanner, 1500);   // let the list settle before asking
+}
+function showInstallBanner() {
+  if (view !== "main" || standalone() || document.activeElement === $("newItem")) return;
+  const ios = !installPrompt;
+  const el = $("installBanner") || document.body.appendChild(Object.assign(document.createElement("section"), { id: "installBanner", className: "install-banner" }));
+  el.setAttribute("aria-label", "הוספה למסך הבית");
+  el.innerHTML = `<div class="ib-top"><img src="icon-192.png" alt="" width="52" height="52">
+      <div class="grow"><b>${ios ? "להוסיף למסך הבית" : "להתקין את הקניות שלנו?"}</b>
+      <span class="muted">${ios ? "שתי לחיצות, וזה נפתח כמו אפליקציה." : "הרשימה תיפתח ישר ממסך הבית, בלי לחפש את הקישור."}</span></div></div>
+    ${ios ? `<ol class="ib-steps"><li>לוחצים על כפתור השיתוף ${svg(P.share, 18, 2.3)} בתחתית המסך</li><li>בוחרים <b>הוספה למסך הבית</b></li></ol>` : ""}
+    <div class="actions">
+      ${ios ? "" : `<button class="btn primary small" data-act="installBanner">התקנה</button>`}
+      <button class="btn outline small" data-act="installLater">${ios ? "הבנתי" : "לא עכשיו"}</button>
+    </div>`;
+  el.style.bottom = `${($("composer")?.offsetHeight || 0) + 10}px`;
+  el.hidden = false;
+}
+function hideInstallBanner() { const el = $("installBanner"); if (el) el.hidden = true; }
 
 // ---------- photos ----------
 function shrinkPhoto(file) {
@@ -1065,7 +1098,9 @@ const ACT = {
   googlePhoto: () => { vd.name = $("pname")?.value ?? vd.name; vd.photo = profile?.googlePhoto || user?.photoURL || ""; vd.photoSource = vd.photo ? "google" : "none"; render(); },
   install: () => installSheet(),
   installTab: el => installSheet(el.dataset.v),
-  async installNow() { if (!installPrompt) return; installPrompt.prompt(); installPrompt = null; closeLayer(); },
+  async installNow() { if (!installPrompt) return; installPrompt.prompt(); installPrompt = null; closeLayer(); hideInstallBanner(); },
+  async installBanner() { hideInstallBanner(); if (!installPrompt) return; const p = installPrompt; installPrompt = null; try { await p.prompt(); } catch {} },
+  installLater() { hideInstallBanner(); ls.set("installLater", String(Date.now() + INSTALL_LATER_DAYS * 864e5)); },
 
   async saveProfile(el) {
     const name = norm($("pname").value).slice(0, 40);
